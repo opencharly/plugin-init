@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"text/template"
 
@@ -180,6 +181,40 @@ func serviceRenderFuncs() template.FuncMap {
 		// A template reads only its OWN init's key, so a directive meant for systemd
 		// can never leak into an OpenRC script. Ordering is by directive name: unit
 		// text must not reorder between builds.
+		// waitForScript lowers wait_for into ONE POSIX sh command a template can place
+		// wherever its init runs pre-start work.
+		//
+		// Returns "" when there is nothing to wait for, so a template's {{if}} omits the
+		// whole branch rather than emitting an empty guard.
+		//
+		// Paths are embedded in DOUBLE quotes on purpose: a wait_for routinely names
+		// "${XDG_RUNTIME_DIR}/wayland-1", and the shell must expand that at start time,
+		// not at render time. The snippet itself contains no single quotes, so a caller
+		// can wrap the whole thing in single quotes (systemd's ExecStartPre= does).
+		//
+		// On timeout it exits NON-ZERO with the paths named. That is the point of
+		// lowering per-init rather than emitting a wrapper: the wait is supervised, so a
+		// timeout fails the unit and shows up in its status, instead of a wrapper exiting
+		// and looking like the daemon crashed.
+		"waitForScript": func(w *spec.ServiceWaitFor) string {
+			if w == nil || len(w.Paths) == 0 {
+				return ""
+			}
+			secs := 30
+			if t := strings.TrimSuffix(strings.TrimSpace(w.Timeout), "s"); t != "" {
+				if n, err := strconv.Atoi(t); err == nil && n > 0 {
+					secs = n
+				}
+			}
+			tests := make([]string, 0, len(w.Paths))
+			for _, path := range w.Paths {
+				tests = append(tests, fmt.Sprintf(`[ -e "%s" ]`, path))
+			}
+			return fmt.Sprintf(
+				`n=0; until %s; do n=$((n+1)); if [ "$n" -ge %d ]; then `+
+					`echo "wait_for: timed out after %ds waiting for: %s" >&2; exit 1; fi; sleep 1; done`,
+				strings.Join(tests, " && "), secs, secs, strings.Join(w.Paths, " "))
+		},
 		"initDirectives": func(opts map[string]map[string]any, init string) []directive {
 			byName := opts[init]
 			if len(byName) == 0 {

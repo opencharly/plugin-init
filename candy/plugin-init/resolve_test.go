@@ -3,6 +3,8 @@ package initkind
 import (
 	"strings"
 	"testing"
+
+	"github.com/opencharly/spec/spec"
 )
 
 // TestRestartMappingFuncs guards the abstract restart: → init-system policy mappings.
@@ -154,5 +156,64 @@ func TestInitDirectivesFlattensUnitOptions(t *testing.T) {
 	}
 	if none := fn(nil, "systemd"); len(none) != 0 {
 		t.Errorf("a nil map produced %v, want nothing", none)
+	}
+}
+
+// waitForScript lowers wait_for into one POSIX sh command. The properties that
+// matter are the ones that make it SAFE to embed and correct to run.
+func TestWaitForScript(t *testing.T) {
+	fn := serviceRenderFuncs()["waitForScript"].(func(*spec.ServiceWaitFor) string)
+
+	if got := fn(nil); got != "" {
+		t.Errorf("nil wait_for produced %q, want empty so the template omits the branch", got)
+	}
+	if got := fn(&spec.ServiceWaitFor{}); got != "" {
+		t.Errorf("empty paths produced %q, want empty", got)
+	}
+
+	got := fn(&spec.ServiceWaitFor{
+		Paths:   []string{"${XDG_RUNTIME_DIR}/wayland-1", "/run/broker.sock"},
+		Timeout: "45s",
+	})
+
+	// Embeddable: systemd wraps this in single quotes, so the snippet must contain
+	// none of its own.
+	if strings.Contains(got, "'") {
+		t.Errorf("script contains a single quote and cannot be wrapped by ExecStartPre=: %s", got)
+	}
+	// Double quotes, not single: "${XDG_RUNTIME_DIR}/wayland-1" has to expand at
+	// START time. Single-quoting it would wait forever on a literal path.
+	if !strings.Contains(got, `[ -e "${XDG_RUNTIME_DIR}/wayland-1" ]`) {
+		t.Errorf("path is not embedded in double quotes, so the shell will not expand it: %s", got)
+	}
+	// Every path is a precondition, not just the first.
+	if !strings.Contains(got, `[ -e "/run/broker.sock" ]`) || !strings.Contains(got, "&&") {
+		t.Errorf("not all paths are required: %s", got)
+	}
+	// The declared timeout is honoured, not a default. This is the labwc bug in
+	// assertion form: that wrapper declared 30 and waited 15.
+	if !strings.Contains(got, "-ge 45") {
+		t.Errorf("declared timeout 45s not honoured: %s", got)
+	}
+	// Failure must be loud and non-zero: a silent give-up would start the service
+	// against a socket that never appeared.
+	if !strings.Contains(got, "exit 1") || !strings.Contains(got, "timed out") {
+		t.Errorf("timeout does not fail loudly: %s", got)
+	}
+	// The message names what it waited for; "timed out" alone is the diagnostic
+	// dead-end this project keeps paying for.
+	if !strings.Contains(got, "/run/broker.sock") {
+		t.Errorf("the timeout message does not name the paths: %s", got)
+	}
+
+	// An absent timeout falls back to a default rather than waiting forever.
+	def := fn(&spec.ServiceWaitFor{Paths: []string{"/a"}})
+	if !strings.Contains(def, "-ge 30") {
+		t.Errorf("no default timeout: %s", def)
+	}
+	// A malformed timeout must not silently become zero, which would fail instantly.
+	bad := fn(&spec.ServiceWaitFor{Paths: []string{"/a"}, Timeout: "soon"})
+	if !strings.Contains(bad, "-ge 30") {
+		t.Errorf("a malformed timeout did not fall back to the default: %s", bad)
 	}
 }
