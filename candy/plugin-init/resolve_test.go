@@ -1,6 +1,9 @@
 package initkind
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // TestRestartMappingFuncs guards the abstract restart: → init-system policy mappings.
 func TestRestartMappingFuncs(t *testing.T) {
@@ -54,6 +57,54 @@ func TestSupervisordStdoutLogging(t *testing.T) {
 		}
 		if got := maxb(c.in); got != c.wantMax {
 			t.Errorf("supervisordLogMaxbytes(%q) = %q, want %q", c.in, got, c.wantMax)
+		}
+	}
+}
+
+// TestSystemdStdoutLogging mirrors TestSupervisordStdoutLogging for systemd. The
+// case that matters is "none": systemd has no such value — its discard sink is
+// "null" — so passing the vocabulary word through unmapped emitted a
+// StandardOutput= systemd rejects at unit load.
+func TestSystemdStdoutLogging(t *testing.T) {
+	logf := serviceRenderFuncs()["systemdStdout"].(func(string) string)
+	valid := map[string]bool{
+		"inherit": true, "null": true, "tty": true, "journal": true,
+		"kmsg": true, "journal+console": true, "socket": true,
+	}
+	cases := []struct{ in, want string }{
+		{"", "journal"},
+		{"journal", "journal"},
+		{"none", "null"},
+		{"file:/var/log/svc.log", "append:/var/log/svc.log"},
+	}
+	for _, c := range cases {
+		got := logf(c.in)
+		if got != c.want {
+			t.Errorf("systemdStdout(%q) = %q, want %q", c.in, got, c.want)
+		}
+		// Every rendering must be something systemd actually accepts.
+		if !valid[got] && !strings.HasPrefix(got, "append:") &&
+			!strings.HasPrefix(got, "file:") && !strings.HasPrefix(got, "truncate:") &&
+			!strings.HasPrefix(got, "fd:") {
+			t.Errorf("systemdStdout(%q) = %q, which is not a valid StandardOutput= value", c.in, got)
+		}
+	}
+}
+
+// TestOpenrcLogging: OpenRC's output_log/error_log take a PATH, and "journal" has
+// no OpenRC analogue, so it must render empty for the template to omit the
+// directive rather than invent a sink.
+func TestOpenrcLogging(t *testing.T) {
+	logf := serviceRenderFuncs()["openrcLog"].(func(string) string)
+	cases := []struct{ in, want string }{
+		{"", ""},
+		{"journal", ""},
+		{"none", "/dev/null"},
+		{"file:/var/log/svc.log", "/var/log/svc.log"},
+	}
+	for _, c := range cases {
+		if got := logf(c.in); got != c.want {
+			t.Errorf("openrcLog(%q) = %q, want %q", c.in, got, c.want)
 		}
 	}
 }
