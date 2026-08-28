@@ -156,14 +156,34 @@ func serviceRenderFuncs() template.FuncMap {
 			}
 			return "false"
 		},
+		// stdout: is the tri-state "journal" | "none" | "file:<path>". systemd has no
+		// "none" - its sink for discard is "null" - so passing the vocabulary word
+		// through unmapped emitted an invalid StandardOutput= that systemd rejects at
+		// unit load. Masked until now because the systemd template never called this.
 		"systemdStdout": func(s string) string {
 			if after, ok := strings.CutPrefix(s, "file:"); ok {
 				return "append:" + after
 			}
-			if s == "" {
+			switch s {
+			case "none":
+				return "null"
+			case "journal", "":
 				return "journal"
 			}
 			return s
+		},
+		// openrcLog maps the same tri-state to OpenRC's output_log/error_log, which
+		// take a PATH. "journal" has no OpenRC analogue - the default is to inherit
+		// the supervisor's own descriptors - so it renders empty and the template
+		// omits the directive entirely rather than inventing a sink.
+		"openrcLog": func(s string) string {
+			if after, ok := strings.CutPrefix(s, "file:"); ok {
+				return after
+			}
+			if s == "none" {
+				return "/dev/null"
+			}
+			return ""
 		},
 		"supervisordLog": func(s string) string {
 			if after, ok := strings.CutPrefix(s, "file:"); ok {
