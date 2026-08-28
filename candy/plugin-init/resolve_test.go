@@ -108,3 +108,51 @@ func TestOpenrcLogging(t *testing.T) {
 		}
 	}
 }
+
+// initDirectives flattens unit_options for ONE init into ordered pairs. The cases that
+// matter: a list must expand to N directives (systemd repeats RuntimeDirectory= and
+// ReadWritePaths= once per element, so collapsing a list would emit one unusable Go
+// slice literal), []any must behave like []string because that is what the YAML/JSON
+// decode path actually produces, and one init must never see another's directives.
+func TestInitDirectivesFlattensUnitOptions(t *testing.T) {
+	fn := serviceRenderFuncs()["initDirectives"].(func(map[string]map[string]any, string) []directive)
+
+	opts := map[string]map[string]any{
+		"systemd": {
+			"KillMode":         "process",
+			"RuntimeDirectory": []string{"cstream", "cstream/leaders"},
+			"ReadWritePaths":   []any{"/run/a", "/run/b"},
+			"TasksMax":         512,
+		},
+		"openrc": {"supervise_daemon_args": "--foo"},
+	}
+
+	got := fn(opts, "systemd")
+	want := []directive{
+		{"KillMode", "process"},
+		{"ReadWritePaths", "/run/a"},
+		{"ReadWritePaths", "/run/b"},
+		{"RuntimeDirectory", "cstream"},
+		{"RuntimeDirectory", "cstream/leaders"},
+		{"TasksMax", "512"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d directives %v, want %d %v", len(got), got, len(want), want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			// Ordering is asserted too: unit text must not reorder between builds.
+			t.Errorf("directive %d = %v, want %v", i, got[i], want[i])
+		}
+	}
+
+	if oc := fn(opts, "openrc"); len(oc) != 1 || oc[0].Key != "supervise_daemon_args" {
+		t.Errorf("openrc got %v — an init must see only its OWN directives", oc)
+	}
+	if none := fn(opts, "supervisord"); len(none) != 0 {
+		t.Errorf("supervisord got %v, want nothing", none)
+	}
+	if none := fn(nil, "systemd"); len(none) != 0 {
+		t.Errorf("a nil map produced %v, want nothing", none)
+	}
+}
