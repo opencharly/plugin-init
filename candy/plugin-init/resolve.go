@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"text/template"
 
@@ -116,6 +117,13 @@ func renderInitTemplate(name, tmpl string, data any) (string, error) {
 	return buf.String(), nil
 }
 
+// directive is one rendered init directive: a template ranges over these and emits
+// "{{.Key}}={{.Value}}" (or the init's own spelling) per element.
+type directive struct {
+	Key   string
+	Value string
+}
+
 // serviceRenderFuncs are the init-system template funcs (the restart/stdout policy
 // mappings each init system's service_template uses).
 func serviceRenderFuncs() template.FuncMap {
@@ -160,6 +168,50 @@ func serviceRenderFuncs() template.FuncMap {
 		// "none" - its sink for discard is "null" - so passing the vocabulary word
 		// through unmapped emitted an invalid StandardOutput= that systemd rejects at
 		// unit load. Masked until now because the systemd template never called this.
+		// initDirectives flattens unit_options for ONE init into ordered Key/Value
+		// pairs a template can range over.
+		//
+		// unit_options is keyed init-name -> directive -> value, and a value may be a
+		// scalar OR a list: systemd repeats directives such as RuntimeDirectory= or
+		// ReadWritePaths= once per element, so a list must expand to N lines rather
+		// than render as one unusable Go slice literal. Templates cannot branch on a
+		// dynamic type, which is why the flattening happens here.
+		//
+		// A template reads only its OWN init's key, so a directive meant for systemd
+		// can never leak into an OpenRC script. Ordering is by directive name: unit
+		// text must not reorder between builds.
+		"initDirectives": func(opts map[string]map[string]any, init string) []directive {
+			byName := opts[init]
+			if len(byName) == 0 {
+				return nil
+			}
+			names := make([]string, 0, len(byName))
+			for k := range byName {
+				names = append(names, k)
+			}
+			sort.Strings(names)
+			out := []directive{}
+			for _, n := range names {
+				switch v := byName[n].(type) {
+				case string:
+					out = append(out, directive{Key: n, Value: v})
+				case []string:
+					for _, e := range v {
+						out = append(out, directive{Key: n, Value: e})
+					}
+				case []any:
+					// The YAML/JSON decode path yields []any, not []string.
+					for _, e := range v {
+						out = append(out, directive{Key: n, Value: fmt.Sprint(e)})
+					}
+				default:
+					// bool/int and anything else: render its natural form rather than
+					// dropping a directive the author explicitly asked for.
+					out = append(out, directive{Key: n, Value: fmt.Sprint(v)})
+				}
+			}
+			return out
+		},
 		"systemdStdout": func(s string) string {
 			if after, ok := strings.CutPrefix(s, "file:"); ok {
 				return "append:" + after
