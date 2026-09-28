@@ -1,5 +1,7 @@
+version: 2026.232.0520
 plugin-init:
     candy:
+        version: 2026.176.3100
         description: |-
             The `init` plugin KIND relocated into a candy: the init-system vocabulary
             (supervisord/systemd fragment-assembly + entrypoint + service-management
