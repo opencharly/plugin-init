@@ -30,11 +30,7 @@ Canonical files:
 ## Build / validate / test
 
 - `go build ./...` in `candy/plugin-init/` — compile the plugin module.
-- `go test ./...` in `candy/plugin-init/` — the plugin's render tests. NOTE:
-  `render_service_hooks_test.go` currently FAILS on `origin/main` — it reads the
-  shipped systemd template from a hardcoded `../../charly/charly.yml` that no
-  longer resolves after the candy de-submodule cutover. Tracked in
-  [opencharly/plugin-init#7](https://github.com/opencharly/plugin-init/issues/7).
+- `go test ./...` in `candy/plugin-init/` — the plugin's render tests.
 - `charly box validate` at the repo root — the structural check (the candy +
   `plugin:` block, CUE schema).
 - The merge gate is the **org-wide** `charly/pr-validator` (required check
