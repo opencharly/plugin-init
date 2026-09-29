@@ -20,9 +20,19 @@ import (
 
 // shippedSystemdServiceSchema reads the systemd init system's service_schema straight out of the
 // repo's init vocabulary, so the assertions below run against the template charly actually ships.
+//
+// The shipped template lives in the charly checkout (charly/charly.yml, //go:embed), which is a
+// SEPARATE repo this standalone plugin does not depend on. That is a live-service-style boundary:
+// when the checkout is absent (a standalone plugin CI run, `go test` outside the umbrella) the
+// artifact cannot be read, so the test SKIPS cleanly (R7a — never a fake, never a false pass)
+// instead of failing on a missing cross-repo path. When it IS present (the umbrella), the real
+// template is read and the R8 assertions run.
 func shippedSystemdServiceSchema(t *testing.T) *spec.InitServiceSchema {
 	t.Helper()
-	path := filepath.Join("..", "..", "charly", "charly.yml")
+	path, ok := findShippedCharlyYAML()
+	if !ok {
+		t.Skip("shipped charly checkout (charly/charly.yml) not present — skipping the R8 assertion against the shipped systemd template")
+	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("reading the init vocabulary at %s: %v", path, err)
@@ -52,6 +62,34 @@ func shippedSystemdServiceSchema(t *testing.T) *spec.InitServiceSchema {
 		t.Fatalf("%s systemd service_schema has an empty service_template", path)
 	}
 	return entry.Init.ServiceSchema
+}
+
+// findShippedCharlyYAML walks up from the test's working directory looking for the charly
+// checkout's embedded defaults, covering BOTH layouts: the umbrella (charly/charly/charly.yml,
+// where the charly repo is a sibling of this plugin repo) and a pre-cutover in-superproject
+// checkout (charly/charly.yml). Returns ok=false when neither is present, so the caller can
+// skip rather than fail on a cross-repo path that a standalone run cannot satisfy.
+func findShippedCharlyYAML() (string, bool) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", false
+	}
+	for {
+		for _, rel := range []string{
+			filepath.Join("charly", "charly", "charly.yml"),
+			filepath.Join("charly", "charly.yml"),
+		} {
+			candidate := filepath.Join(dir, rel)
+			if _, statErr := os.Stat(candidate); statErr == nil {
+				return candidate, true
+			}
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", false
+		}
+		dir = parent
+	}
 }
 
 func renderWithShippedSystemd(t *testing.T, entry *spec.ServiceEntry) string {
