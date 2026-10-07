@@ -4,8 +4,10 @@
 // used two ways (the same contract the package-group/agent/module/sidecar/distro/builder
 // plugins and core `spec` use):
 //
-//  1. GENERATE the Go param struct — `cue exp gengotypes` (task cue:gen) →
-//     ../params/cue_types_gen.go.
+//  1. GENERATE the Go param struct — the schema→Go pipeline: concat this file under a
+//     `package params` + `@go(params)` header (`internal/schemagen -mode=concat
+//     -pkg=params` in opencharly/spec), `cue exp gengotypes`, then `-mode=retag` to
+//     double every json tag with a yaml tag → ../params/cue_types_gen.go.
 //  2. VALIDATE authored input AT RUNTIME — served over Describe (InProcTransport),
 //     spliced base ++ plugin, every authored `init:` body validated against #InitInput
 //     BEFORE runPluginKind dispatches.
