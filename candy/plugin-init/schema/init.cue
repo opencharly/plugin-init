@@ -25,7 +25,10 @@
 	candy_field?: [...(string & !="")]
 	candy_file?: [...(string & !="")]
 	depends_candy?: string & !=""
-	requires_capability?: [...(string & =~"^[a-z][a-z0-9_]*$")]
+	requires_capability?: [...(string & =~"^[a-z][a-z0-9_]*(:[a-z][a-z0-9-]*)?$")]
+
+	// extends — inherit another entry of the same vocabulary; merged before use.
+	extends?: string & !=""
 
 	// The one mandatory field: the build model.
 	model: "fragment_assembly" | "file_copy"
@@ -44,6 +47,11 @@
 
 	entrypoint?: [...(string & !="")]
 	fallback_entrypoint?: [...(string & !="")]
+
+	// The container-venue runtime contract (mirrors core #Init).
+	requires_root?: bool
+	systemd_mode?:  bool
+	stop_signal?:   string
 
 	management_tool?: string & !=""
 	management_command?: {
