@@ -233,6 +233,9 @@ func TestResolveInitConfigCarriesContainerRuntimeContract(t *testing.T) {
 		SystemdMode:        true,
 		StopSignal:         "SIGRTMIN+3",
 		RequiresCapability: []string{"init_system:systemd-container"},
+		// The two fields the same hand-written projection must not drop: the
+		// inheritance link and the candidate gate.
+		Extends: "systemd",
 	})
 	if err != nil {
 		t.Fatalf("marshal authored init: %v", err)
@@ -253,5 +256,14 @@ func TestResolveInitConfigCarriesContainerRuntimeContract(t *testing.T) {
 	}
 	if len(r.Entrypoint) != 1 || r.Entrypoint[0] != "/sbin/init" {
 		t.Errorf("Entrypoint = %v, want [/sbin/init]", r.Entrypoint)
+	}
+	// The inheritance link and the candidate gate are the other two fields this
+	// hand-written projection owns; dropping either is invisible until a variant
+	// entry fails to inherit its unit template or fails to become a candidate.
+	if r.Extends != "systemd" {
+		t.Errorf("Extends = %q, want systemd", r.Extends)
+	}
+	if len(r.RequiresCapability) != 1 || r.RequiresCapability[0] != "init_system:systemd-container" {
+		t.Errorf("RequiresCapability = %v, want [init_system:systemd-container]", r.RequiresCapability)
 	}
 }
