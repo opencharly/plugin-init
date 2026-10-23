@@ -34,6 +34,9 @@ type InitInput struct {
 
 	Requires_capability []string `yaml:"requires_capability,omitempty" json:"requires_capability,omitempty"`
 
+	// extends — inherit another entry of the same vocabulary; merged before use.
+	Extends string `yaml:"extends,omitempty" json:"extends,omitempty"`
+
 	// The one mandatory field: the build model.
 	Model string `yaml:"model,omitempty" json:"model"`
 
@@ -58,6 +61,13 @@ type InitInput struct {
 	Entrypoint []string `yaml:"entrypoint,omitempty" json:"entrypoint,omitempty"`
 
 	Fallback_entrypoint []string `yaml:"fallback_entrypoint,omitempty" json:"fallback_entrypoint,omitempty"`
+
+	// The container-venue runtime contract (mirrors core #Init).
+	Requires_root bool `yaml:"requires_root,omitempty" json:"requires_root,omitempty"`
+
+	Systemd_mode bool `yaml:"systemd_mode,omitempty" json:"systemd_mode,omitempty"`
+
+	Stop_signal string `yaml:"stop_signal,omitempty" json:"stop_signal,omitempty"`
 
 	Management_tool string `yaml:"management_tool,omitempty" json:"management_tool,omitempty"`
 

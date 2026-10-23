@@ -83,6 +83,7 @@ func resolveInitConfig(in spec.InitResolveInput) (spec.InitResolveReply, error) 
 		CandyFiles:           d.CandyFiles,
 		DependsCandy:         d.DependsCandy,
 		RequiresCapability:   d.RequiresCapability,
+		Extends:              d.Extends,
 		Model:                d.Model,
 		HeaderFile:           d.HeaderFile,
 		FragmentDir:          d.FragmentDir,
@@ -95,11 +96,19 @@ func resolveInitConfig(in spec.InitResolveInput) (spec.InitResolveReply, error) 
 		PostAssemblyTemplate: d.PostAssemblyTemplate,
 		Entrypoint:           d.Entrypoint,
 		FallbackEntrypoint:   d.FallbackEntrypoint,
-		ManagementTool:       d.ManagementTool,
-		ManagementCommands:   d.ManagementCommands,
-		LabelKey:             d.LabelKey,
-		ServiceSchema:        d.ServiceSchema,
-		Raw:                  in.Init,
+		// The container-venue runtime contract must survive resolution: the label
+		// leg (deploykit.render_prep → ai.opencharly.init_def) and the build render
+		// read it off the RESOLVED form. Dropping these here silently reverts every
+		// consumer to "not a container init" — a systemd image that then deploys
+		// without systemd mode and crash-loops at 255.
+		RequiresRoot:       d.RequiresRoot,
+		SystemdMode:        d.SystemdMode,
+		StopSignal:         d.StopSignal,
+		ManagementTool:     d.ManagementTool,
+		ManagementCommands: d.ManagementCommands,
+		LabelKey:           d.LabelKey,
+		ServiceSchema:      d.ServiceSchema,
+		Raw:                in.Init,
 	}}, nil
 }
 

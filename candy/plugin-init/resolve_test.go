@@ -1,6 +1,7 @@
 package initkind
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -215,5 +216,42 @@ func TestWaitForScript(t *testing.T) {
 	bad := fn(&spec.ServiceWaitFor{Paths: []string{"/a"}, Timeout: "soon"})
 	if !strings.Contains(bad, "-ge 30") {
 		t.Errorf("a malformed timeout did not fall back to the default: %s", bad)
+	}
+}
+
+// TestResolveInitConfigCarriesContainerRuntimeContract pins the resolve leg's
+// field projection for the container-venue init contract. resolveInitConfig is
+// hand-written field-by-field, so a new #Init field it does not name is silently
+// dropped between the authored vocabulary and every runtime consumer — measured
+// as the exact shape of this test failing (requires_root/systemd_mode/stop_signal
+// arrived empty on the RESOLVED form while present in the authored body).
+func TestResolveInitConfigCarriesContainerRuntimeContract(t *testing.T) {
+	raw, err := json.Marshal(spec.Init{
+		Model:              "file_copy",
+		Entrypoint:         []string{"/sbin/init"},
+		RequiresRoot:       true,
+		SystemdMode:        true,
+		StopSignal:         "SIGRTMIN+3",
+		RequiresCapability: []string{"init_system:systemd-container"},
+	})
+	if err != nil {
+		t.Fatalf("marshal authored init: %v", err)
+	}
+	reply, err := resolveInitConfig(spec.InitResolveInput{Init: raw})
+	if err != nil {
+		t.Fatalf("resolveInitConfig: %v", err)
+	}
+	if reply.Resolved == nil {
+		t.Fatal("resolveInitConfig returned a nil Resolved")
+	}
+	r := reply.Resolved
+	if !r.RequiresRoot || !r.SystemdMode {
+		t.Errorf("container runtime booleans dropped: RequiresRoot=%v SystemdMode=%v, want true/true", r.RequiresRoot, r.SystemdMode)
+	}
+	if r.StopSignal != "SIGRTMIN+3" {
+		t.Errorf("StopSignal = %q, want SIGRTMIN+3", r.StopSignal)
+	}
+	if len(r.Entrypoint) != 1 || r.Entrypoint[0] != "/sbin/init" {
+		t.Errorf("Entrypoint = %v, want [/sbin/init]", r.Entrypoint)
 	}
 }
